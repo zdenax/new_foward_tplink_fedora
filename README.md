@@ -110,6 +110,19 @@ ping 8.8.8.8      # Test internetu
 curl -I google.com # Test HTTP
 ```
 
+## Docker kompatibilita
+
+Docker má vlastní `iptables FORWARD` chain s `policy drop`, který běží **před** firewalld (nižší nftables priorita). Bez opravy Docker tiše zahazuje všechny forwardované pakety.
+
+`setup.sh` to řeší automaticky — přidá pravidla do `DOCKER-USER` (správné místo pro override):
+
+```bash
+iptables -I DOCKER-USER -i enp4s0 -o wlp2s0 -j ACCEPT
+iptables -I DOCKER-USER -i wlp2s0 -o enp4s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+```
+
+Po restartu Dockeru je potřeba znovu spustit `sudo ./setup.sh` (Docker maže DOCKER-USER při startu).
+
 ## Příkazy Diagnostiky
 
 ```bash
