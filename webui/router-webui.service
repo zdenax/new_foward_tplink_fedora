@@ -1,0 +1,14 @@
+[Unit]
+Description=Router Manager Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=zdenek
+WorkingDirectory=/home/zdenek/claude/new_foward_tplink/webui
+ExecStart=/usr/bin/python3 app.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

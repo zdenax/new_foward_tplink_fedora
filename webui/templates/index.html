@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Router Manager</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+  header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+  header h1 { font-size: 1.2rem; font-weight: 600; }
+  .badge { padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; }
+  .badge-on  { background: #065f46; color: #6ee7b7; }
+  .badge-off { background: #7f1d1d; color: #fca5a5; }
+  main { max-width: 1100px; margin: 0 auto; padding: 2rem; display: grid; gap: 1.5rem; grid-template-columns: 1fr 1fr; }
+  .card { background: #1a1d27; border: 1px solid #2d3148; border-radius: 12px; padding: 1.5rem; }
+  .card h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 1.25rem; }
+  .full { grid-column: 1 / -1; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #1e2235; }
+  .row:last-child { border: none; }
+  .label { color: #94a3b8; font-size: 0.875rem; }
+  .value { font-family: monospace; font-size: 0.9rem; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .dot-up { background: #10b981; box-shadow: 0 0 6px #10b981; }
+  .dot-down { background: #ef4444; }
+  .btn { padding: 0.6rem 1.5rem; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-start { background: #059669; color: #fff; }
+  .btn-stop  { background: #dc2626; color: #fff; }
+  .btn-save  { background: #2563eb; color: #fff; }
+  .btn-group { display: flex; gap: 0.75rem; margin-top: 1.25rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  th { text-align: left; color: #64748b; font-weight: 600; padding: 0.5rem 0.75rem; border-bottom: 1px solid #2d3148; }
+  td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #1e2235; font-family: monospace; }
+  tr:last-child td { border: none; }
+  .empty { color: #475569; text-align: center; padding: 1.5rem; }
+  input[type=text], input[type=password] { width: 100%; background: #0f1117; border: 1px solid #2d3148; border-radius: 6px; color: #e2e8f0; padding: 0.5rem 0.75rem; font-size: 0.9rem; margin-top: 0.5rem; }
+  .field { margin-bottom: 1rem; }
+  .field label { font-size: 0.8rem; color: #94a3b8; }
+  .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #1e293b; border: 1px solid #334155; padding: 0.75rem 1.25rem; border-radius: 8px; font-size: 0.875rem; display: none; }
+  .toast.show { display: block; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .stat-box { background: #0f1117; border-radius: 8px; padding: 1rem; text-align: center; }
+  .stat-box .num { font-size: 1.5rem; font-weight: 700; color: #38bdf8; font-family: monospace; }
+  .stat-box .lbl { font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Router Manager</h1>
+  <span id="fwd-badge" class="badge">…</span>
+  <span style="margin-left:auto; color:#475569; font-size:0.8rem" id="ap-model">AP: …</span>
+</header>
+<main>
+
+  <!-- Ovládání -->
+  <div class="card">
+    <h2>Forwarding</h2>
+    <div class="row"><span class="label">Stav</span><span id="fwd-status" class="value">…</span></div>
+    <div class="row"><span class="label">WAN interface</span><span id="wan-iface" class="value">…</span></div>
+    <div class="row"><span class="label">LAN interface</span><span id="lan-iface" class="value">…</span></div>
+    <div class="btn-group">
+      <button class="btn btn-start" onclick="control('start')">▶ Spustit</button>
+      <button class="btn btn-stop"  onclick="control('stop')">■ Zastavit</button>
+    </div>
+  </div>
+
+  <!-- Statistiky -->
+  <div class="card">
+    <h2>Statistiky</h2>
+    <div class="stat-grid">
+      <div class="stat-box"><div id="wan-rx" class="num">…</div><div class="lbl">WAN příjem</div></div>
+      <div class="stat-box"><div id="wan-tx" class="num">…</div><div class="lbl">WAN odesláno</div></div>
+      <div class="stat-box"><div id="lan-rx" class="num">…</div><div class="lbl">LAN příjem</div></div>
+      <div class="stat-box"><div id="lan-tx" class="num">…</div><div class="lbl">LAN odesláno</div></div>
+    </div>
+  </div>
+
+  <!-- Připojení klienti -->
+  <div class="card full">
+    <h2>Připojení klienti (DHCP leases)</h2>
+    <table>
+      <thead><tr><th>IP</th><th>MAC</th><th>Jméno</th><th>Vyprší</th></tr></thead>
+      <tbody id="clients-body"><tr><td colspan="4" class="empty">Načítám…</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- AP WiFi config -->
+  <div class="card full">
+    <h2>AP WiFi konfigurace</h2>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem">
+      <div>
+        <div class="field">
+          <label>SSID</label>
+          <input type="text" id="ap-ssid" placeholder="název sítě">
+        </div>
+        <div class="field">
+          <label>Heslo (WPA2)</label>
+          <input type="password" id="ap-pass" placeholder="min. 8 znaků">
+        </div>
+        <button class="btn btn-save" onclick="saveWifi()">Uložit a aplikovat</button>
+        <p style="font-size:0.75rem; color:#475569; margin-top:0.75rem" id="ap-note">Pro změnu SSID/hesla musí být AP dosažitelný na 192.168.100.1</p>
+      </div>
+      <div>
+        <div class="row"><span class="label">AP IP</span><span class="value">192.168.100.1</span></div>
+        <div class="row"><span class="label">AP stav</span><span id="ap-state" class="value">…</span></div>
+        <div class="row"><span class="label">Model</span><span id="ap-model2" class="value">…</span></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function toast(msg, ok=true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = ok ? '#059669' : '#dc2626';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+async function loadStatus() {
+  const r = await fetch('/api/status');
+  const d = await r.json();
+
+  const fwd = d.forwarding;
+  document.getElementById('fwd-badge').textContent = fwd ? 'AKTIVNÍ' : 'NEAKTIVNÍ';
+  document.getElementById('fwd-badge').className = 'badge ' + (fwd ? 'badge-on' : 'badge-off');
+  document.getElementById('fwd-status').innerHTML = fwd
+    ? '<span class="dot dot-up"></span>Běží'
+    : '<span class="dot dot-down"></span>Zastaveno';
+
+  const wan = d.wan, lan = d.lan;
+  document.getElementById('wan-iface').innerHTML = `<span class="dot ${wan.state==='up'?'dot-up':'dot-down'}"></span>${wan.iface} &nbsp;${wan.ip}`;
+  document.getElementById('lan-iface').innerHTML = `<span class="dot ${lan.state==='up'?'dot-up':'dot-down'}"></span>${lan.iface} &nbsp;${lan.ip}`;
+  document.getElementById('wan-rx').textContent = wan.rx;
+  document.getElementById('wan-tx').textContent = wan.tx;
+  document.getElementById('lan-rx').textContent = lan.rx;
+  document.getElementById('lan-tx').textContent = lan.tx;
+
+  const tbody = document.getElementById('clients-body');
+  if (d.clients.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">Žádní klienti</td></tr>';
+  } else {
+    tbody.innerHTML = d.clients.map(c =>
+      `<tr><td>${c.ip}</td><td>${c.mac}</td><td>${c.name}</td><td>${c.expires}</td></tr>`
+    ).join('');
+  }
+
+  const ap = d.ap;
+  document.getElementById('ap-model').textContent = 'AP: ' + ap.model;
+  document.getElementById('ap-model2').textContent = ap.model;
+  document.getElementById('ap-state').innerHTML = ap.reachable
+    ? '<span class="dot dot-up"></span>Dosažitelný'
+    : '<span class="dot dot-down"></span>Nedosažitelný';
+}
+
+async function control(action) {
+  const r = await fetch(`/api/${action}`, { method: 'POST' });
+  const d = await r.json();
+  toast(d.ok ? `${action === 'start' ? 'Spuštěno' : 'Zastaveno'} ✓` : 'Chyba: ' + d.output.slice(0,100), d.ok);
+  setTimeout(loadStatus, 1000);
+}
+
+async function saveWifi() {
+  const ssid = document.getElementById('ap-ssid').value.trim();
+  const password = document.getElementById('ap-pass').value;
+  if (!ssid) { toast('SSID nesmí být prázdné', false); return; }
+  const r = await fetch('/api/ap/wifi', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ ssid, password })
+  });
+  const d = await r.json();
+  toast(d.ok ? 'WiFi nastavení uloženo ✓' : (d.error || 'Chyba'), d.ok);
+}
+
+loadStatus();
+setInterval(loadStatus, 5000);
+</script>
+</body>
+</html>

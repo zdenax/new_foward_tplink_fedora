@@ -181,12 +181,75 @@ sudo systemctl enable net-forwarding
 sudo systemctl start net-forwarding
 ```
 
+## Web UI (Router Manager)
+
+Lokální webové rozhraní pro správu forwardingu a AP.
+
+### Funkce
+- Start / Stop forwardingu jedním kliknutím
+- Statistiky přenosu dat (WAN/LAN rx/tx)
+- Seznam připojených klientů z DHCP leases
+- Konfigurace SSID a hesla AP *(závisí na modelu — viz níže)*
+- Automatická obnova každých 5 sekund
+
+### Instalace
+
+```bash
+# Závislosti
+sudo dnf install -y python3-flask nginx
+
+# Sudoers — web UI smí volat setup.sh/stop.sh bez hesla
+sudo tee /etc/sudoers.d/router-webui <<'EOF'
+zdenek ALL=(root) NOPASSWD: /home/zdenek/claude/new_foward_tplink/setup.sh
+zdenek ALL=(root) NOPASSWD: /home/zdenek/claude/new_foward_tplink/stop.sh
+EOF
+
+# nginx — odstraň default server blok, přidej náš config
+sudo cp webui/nginx.conf /etc/nginx/conf.d/router.conf
+# (odstraň nebo uprav default server v /etc/nginx/nginx.conf)
+
+# SELinux — povol nginx proxy na localhost
+sudo setsebool -P httpd_can_network_connect 1
+
+# Spuštění
+sudo cp webui/router-webui.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now router-webui
+sudo systemctl enable --now nginx
+```
+
+### Přístup
+
+```
+http://localhost/
+```
+
+### AP WiFi konfigurace (SSID / heslo)
+
+Funkce závisí na modelu AP. Po zjištění modelu (`http://192.168.100.1`) implementuj
+příslušné HTTP volání v `webui/app.py` ve funkci `api_ap_wifi()`.
+
+Podporované modely TP-Link mají typicky endpoint:
+- Starší (TL-WR série): POST na `/userRpm/WlanSecurityRpm.htm`
+- Novější (Archer série): REST API na `/cgi-bin/luci/;stok=<token>/api/...`
+
+### Soubory web UI
+
+```
+webui/
+├── app.py                  Flask backend
+├── templates/index.html    Dashboard
+├── nginx.conf              nginx reverse proxy config
+└── router-webui.service    systemd service
+```
+
 ## Soubory
 
 - `setup.sh` — nastavení forwardingu (firewalld + fallback iptables)
 - `stop.sh` — zastavení forwardingu
 - `dnsmasq.conf` — DNS konfigurace
 - `net-forwarding.service` — systemd service
+- `webui/` — webové rozhraní pro správu
 - `README.md` — tato dokumentace
 
 ---
