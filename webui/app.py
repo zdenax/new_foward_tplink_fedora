@@ -9,7 +9,7 @@ SCRIPT_DIR = Path(__file__).parent.parent
 SETUP_SCRIPT = SCRIPT_DIR / "setup.sh"
 STOP_SCRIPT  = SCRIPT_DIR / "stop.sh"
 DNSMASQ_LEASES = Path("/var/lib/dnsmasq/dnsmasq.leases")
-AP_IP = "192.168.100.1"
+AP_IP = "192.168.100.2"
 AP_ADMIN_USER = "admin"
 AP_ADMIN_PASS = "admin"  # změň dle AP
 
