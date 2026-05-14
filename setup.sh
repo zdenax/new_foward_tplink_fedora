@@ -5,8 +5,9 @@
 set -e
 
 # === Konfigurace rozhraní ===
-WAN_IF="wlp2s0"   # internet (zabudovaný WiFi)
-LAN_IF="enp4s0"   # kabel do AP
+WAN_IF="wlp2s0"       # internet (zabudovaný WiFi)
+LAN_IF="enp4s0"       # kabel do AP
+LAN_IP="192.168.100.50"  # statická IP Fedory v AP síti
 
 echo "=== Internet Forwarding Setup (Fedora) ==="
 echo "    WAN: $WAN_IF  →  LAN: $LAN_IF"
@@ -16,11 +17,20 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# 1. Kontrola rozhraní
+# 1. Kontrola rozhraní + statická IP na LAN
 echo ""
 echo "1. Kontrola sítě..."
 ip addr show "$LAN_IF" > /dev/null 2>&1 || { echo "Chyba: $LAN_IF nenalezeno"; exit 1; }
 ip addr show "$WAN_IF" > /dev/null 2>&1 || { echo "Chyba: $WAN_IF nenalezeno"; exit 1; }
+
+# Nastav statickou IP na LAN (přes nmcli, permanentně)
+echo "   Nastavuji statickou IP $LAN_IP na $LAN_IF..."
+if nmcli con show ap-lan &>/dev/null; then
+    nmcli con modify ap-lan ip4 "$LAN_IP/24" ipv4.method manual
+else
+    nmcli con add type ethernet ifname "$LAN_IF" con-name ap-lan ip4 "$LAN_IP/24" ipv4.method manual
+fi
+nmcli con up ap-lan > /dev/null
 
 echo "   $LAN_IF: $(ip addr show "$LAN_IF" | grep "inet " | awk '{print $2}' || echo 'bez IP')"
 echo "   $WAN_IF: $(ip addr show "$WAN_IF" | grep "inet " | awk '{print $2}' || echo 'bez IP')"

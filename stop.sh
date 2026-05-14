@@ -32,4 +32,7 @@ fi
 echo "3. Zastavení dnsmasq..."
 systemctl stop dnsmasq || true
 
+echo "4. Vrácení $LAN_IF na DHCP..."
+nmcli con delete ap-lan 2>/dev/null || true
+
 echo "✓ Internet Forwarding zastaveno"
