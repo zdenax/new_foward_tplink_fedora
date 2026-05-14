@@ -100,7 +100,7 @@ def ap_cgi(action_type, oid, stack, attrs):
     url = f"http://{AP_IP}/cgi?{action_type}="
     req = urllib.request.Request(url, data=data, headers=ap_auth_header(), method="POST")
     req.add_header("Content-Type", "text/plain")
-    with urllib.request.urlopen(req, timeout=5) as r:
+    with urllib.request.urlopen(req, timeout=10) as r:
         return r.read().decode(errors="ignore")
 
 
@@ -193,12 +193,14 @@ def api_ap_wifi():
         return jsonify({"ok": False, "error": f"Nelze číst AP: {e}"})
     try:
         ap_cgi(2, "LAN_WLAN", stack, [f"SSID={ssid}"])
+    except (urllib.error.URLError, TimeoutError):
+        pass  # AP může restartovat WiFi → timeout = OK
     except Exception as e:
         return jsonify({"ok": False, "error": f"SSID SET selhal: {e}"})
     if password:
         try:
             ap_cgi(2, "LAN_WLAN", stack, [f"X_TP_PreSharedKey={password}"])
-        except urllib.error.URLError:
+        except (urllib.error.URLError, TimeoutError):
             pass  # AP restartuje WiFi po změně hesla → timeout = OK
         except Exception as e:
             return jsonify({"ok": False, "error": f"Heslo SET selhal: {e}"})
