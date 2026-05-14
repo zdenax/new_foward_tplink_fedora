@@ -74,16 +74,17 @@ def get_iface_state(iface):
     return state or "unknown"
 
 
-def get_dhcp_leases():
-    leases = []
-    if DNSMASQ_LEASES.exists():
-        for line in DNSMASQ_LEASES.read_text().splitlines():
-            parts = line.split()
-            if len(parts) >= 4:
-                exp, mac, ip, name = parts[0], parts[1], parts[2], parts[3]
-                exp_str = "∞" if exp == "0" else time.strftime("%H:%M:%S", time.localtime(int(exp)))
-                leases.append({"ip": ip, "mac": mac, "name": name if name != "*" else "—", "expires": exp_str})
-    return leases
+def get_clients():
+    """Klienti z ARP tabulky na LAN interface."""
+    clients = []
+    out = run(f"ip neigh show dev {LAN_IF}")
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] == "lladdr" and "FAILED" not in line:
+            ip, mac = parts[0], parts[2]
+            if ip != AP_IP:  # vynech AP samotný
+                clients.append({"ip": ip, "mac": mac, "name": "—"})
+    return clients
 
 
 def ap_auth_header():
@@ -151,7 +152,7 @@ def api_status():
             "rx": fmt_bytes(lan_rx),
             "tx": fmt_bytes(lan_tx),
         },
-        "clients": get_dhcp_leases(),
+        "clients": get_clients(),
         "ap": get_ap_config(),
     })
 
@@ -181,16 +182,20 @@ def api_ap_wifi():
         return jsonify({"ok": False, "error": "Heslo musí mít min. 8 znaků"})
     try:
         stack, _ = ap_get_wlan()
-        # SET SSID
-        ap_cgi(2, "LAN_WLAN", stack, [f"SSID={ssid}"])
-        # SET heslo — jen PreSharedKey, ostatní atributy zachováme
-        if password:
-            ap_cgi(2, "LAN_WLAN", stack, [
-                f"X_TP_PreSharedKey={password}",
-            ])
-        return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return jsonify({"ok": False, "error": f"Nelze číst AP: {e}"})
+    try:
+        ap_cgi(2, "LAN_WLAN", stack, [f"SSID={ssid}"])
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"SSID SET selhal: {e}"})
+    if password:
+        try:
+            ap_cgi(2, "LAN_WLAN", stack, [f"X_TP_PreSharedKey={password}"])
+        except urllib.error.URLError:
+            pass  # AP restartuje WiFi po změně hesla → timeout = OK
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"Heslo SET selhal: {e}"})
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
