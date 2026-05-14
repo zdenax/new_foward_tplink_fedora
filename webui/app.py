@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-import subprocess, json, os, re, time
+import subprocess, json, os, re, time, base64
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request
+import urllib.request, urllib.error
 
 app = Flask(__name__)
 
@@ -15,6 +16,21 @@ AP_ADMIN_PASS = "admin"  # změň dle AP
 
 WAN_IF = "wlp2s0"
 LAN_IF = "enp4s0"
+
+try:
+    from config.local import AP_IP, AP_ADMIN_USER, AP_ADMIN_PASS  # type: ignore
+except ImportError:
+    try:
+        import importlib.util, sys
+        spec = importlib.util.spec_from_file_location("config_local",
+            Path(__file__).parent / "config.local.py")
+        cfg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cfg)
+        AP_IP = cfg.AP_IP
+        AP_ADMIN_USER = cfg.AP_ADMIN_USER
+        AP_ADMIN_PASS = cfg.AP_ADMIN_PASS
+    except Exception:
+        pass
 
 
 def run(cmd):
@@ -70,18 +86,44 @@ def get_dhcp_leases():
     return leases
 
 
+def ap_auth_header():
+    cred = base64.b64encode(f"{AP_ADMIN_USER}:{AP_ADMIN_PASS}".encode()).decode()
+    return {"Cookie": f"Authorization=Basic {cred}", "Referer": f"http://{AP_IP}/"}
+
+
+def ap_cgi(action_type, oid, stack, attrs):
+    """Zavolá TP-Link CGI API. action_type: 1=GET, 2=SET, 5=GL."""
+    attr_str = "\r\n".join(attrs) + "\r\n"
+    count = len(attrs)
+    data = f"[{oid}#{stack}#0,0,0,0,0,0]0,{count}\r\n{attr_str}".encode()
+    url = f"http://{AP_IP}/cgi?{action_type}="
+    req = urllib.request.Request(url, data=data, headers=ap_auth_header(), method="POST")
+    req.add_header("Content-Type", "text/plain")
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return r.read().decode(errors="ignore")
+
+
+def ap_get_wlan():
+    """Vrátí SSID a stack prvního WLAN."""
+    resp = ap_cgi(5, "LAN_WLAN", "0,0,0,0,0,0", ["name", "SSID", "Enable"])
+    stack_m = re.search(r"\[(\d+,\d+,\d+,\d+,\d+,\d+)\]", resp)
+    ssid_m = re.search(r"SSID=(.+)", resp)
+    stack = stack_m.group(1) if stack_m else "1,1,0,0,0,0"
+    ssid = ssid_m.group(1).strip() if ssid_m else "—"
+    return stack, ssid
+
+
 def get_ap_config():
-    """Pokus o čtení konfigurace AP přes HTTP. Model-specific — placeholder."""
     try:
-        import urllib.request
-        r = urllib.request.urlopen(f"http://{AP_IP}", timeout=2)
-        html = r.read().decode(errors="ignore")
-        # Detekuj model z HTML
-        m = re.search(r"(TL-\w+|Archer \w+)", html, re.IGNORECASE)
+        req = urllib.request.Request(f"http://{AP_IP}/", headers=ap_auth_header())
+        with urllib.request.urlopen(req, timeout=2) as r:
+            html = r.read().decode(errors="ignore")
+        m = re.search(r'modelName="([^"]+)"', html)
         model = m.group(1) if m else "TP-Link AP"
-        return {"model": model, "reachable": True}
+        _, ssid = ap_get_wlan()
+        return {"model": model, "ssid": ssid, "reachable": True}
     except Exception:
-        return {"model": "—", "reachable": False}
+        return {"model": "—", "ssid": "—", "reachable": False}
 
 
 @app.route("/")
@@ -130,14 +172,29 @@ def api_stop():
 
 @app.route("/api/ap/wifi", methods=["POST"])
 def api_ap_wifi():
-    """Změna SSID a hesla — implementace závisí na modelu AP."""
     data = request.get_json()
-    ssid = data.get("ssid", "")
+    ssid = data.get("ssid", "").strip()
     password = data.get("password", "")
     if not ssid:
         return jsonify({"ok": False, "error": "SSID nesmí být prázdné"})
-    # TODO: implementovat dle modelu AP (viz README)
-    return jsonify({"ok": False, "error": "AP model ještě nepodporován — přidej model do app.py"})
+    if password and len(password) < 8:
+        return jsonify({"ok": False, "error": "Heslo musí mít min. 8 znaků"})
+    try:
+        stack, _ = ap_get_wlan()
+        # SET SSID
+        ap_cgi(2, "LAN_WLAN", stack, [f"SSID={ssid}"])
+        # SET heslo (WPA2-PSK AES)
+        if password:
+            ap_cgi(2, "LAN_WLAN", stack, [
+                "BeaconType=11i",
+                "IEEE11iAuthenticationMode=PSKAuthentication",
+                "IEEE11iEncryptionModes=AESEncryption",
+                f"X_TP_PreSharedKey={password}",
+                "X_TP_GroupKeyUpdateInterval=0",
+            ])
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
 
 
 if __name__ == "__main__":
