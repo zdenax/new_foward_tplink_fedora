@@ -183,14 +183,10 @@ def api_ap_wifi():
         stack, _ = ap_get_wlan()
         # SET SSID
         ap_cgi(2, "LAN_WLAN", stack, [f"SSID={ssid}"])
-        # SET heslo (WPA2-PSK AES)
+        # SET heslo — jen PreSharedKey, ostatní atributy zachováme
         if password:
             ap_cgi(2, "LAN_WLAN", stack, [
-                "BeaconType=11i",
-                "IEEE11iAuthenticationMode=PSKAuthentication",
-                "IEEE11iEncryptionModes=AESEncryption",
                 f"X_TP_PreSharedKey={password}",
-                "X_TP_GroupKeyUpdateInterval=0",
             ])
         return jsonify({"ok": True})
     except Exception as e:
