@@ -1,2 +1,3 @@
 webui/config.local.py
 *.local.py
+webui/aliases.json

@@ -78,9 +78,9 @@
 
   <!-- Připojení klienti -->
   <div class="card full">
-    <h2>Připojení klienti (DHCP leases)</h2>
+    <h2>Připojení klienti</h2>
     <table>
-      <thead><tr><th>IP</th><th>MAC</th><th>Jméno</th><th>Vyprší</th></tr></thead>
+      <thead><tr><th>IP</th><th>MAC</th><th>Jméno</th><th></th></tr></thead>
       <tbody id="clients-body"><tr><td colspan="4" class="empty">Načítám…</td></tr></tbody>
     </table>
   </div>
@@ -115,6 +115,19 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Rename modal -->
+<div id="rename-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center">
+  <div style="background:#1a1d27;border:1px solid #2d3148;border-radius:12px;padding:1.5rem;min-width:320px">
+    <h3 style="margin-bottom:1rem;font-size:0.9rem;color:#94a3b8">Přejmenovat zařízení</h3>
+    <p style="font-size:0.8rem;color:#475569;margin-bottom:0.5rem" id="rename-ip-label"></p>
+    <input type="text" id="rename-input" placeholder="Název zařízení (prázdné = smaž)" style="width:100%;background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:0.5rem 0.75rem;font-size:0.9rem">
+    <div style="display:flex;gap:0.75rem;margin-top:1rem;justify-content:flex-end">
+      <button class="btn" style="background:#374151;color:#e2e8f0" onclick="closeRename()">Zrušit</button>
+      <button class="btn btn-save" onclick="saveRename()">Uložit</button>
+    </div>
+  </div>
+</div>
+
 <script>
 function toast(msg, ok=true) {
   const t = document.getElementById('toast');
@@ -148,7 +161,12 @@ async function loadStatus() {
     tbody.innerHTML = '<tr><td colspan="4" class="empty">Žádní klienti</td></tr>';
   } else {
     tbody.innerHTML = d.clients.map(c =>
-      `<tr><td>${c.ip}</td><td>${c.mac}</td><td>${c.name}</td><td>${c.expires}</td></tr>`
+      `<tr>
+        <td>${c.ip}</td>
+        <td style="color:#64748b">${c.mac}</td>
+        <td>${c.name !== '—' ? `<strong>${c.name}</strong>` : '<span style="color:#475569">—</span>'}</td>
+        <td><button class="btn" style="padding:0.25rem 0.75rem;font-size:0.75rem;background:#1e2235;color:#94a3b8" onclick="openRename('${c.ip}','${c.name !== '—' ? c.name : ''}')">✏</button></td>
+      </tr>`
     ).join('');
   }
 
@@ -182,6 +200,40 @@ async function saveWifi() {
   const d = await r.json();
   toast(d.ok ? 'WiFi nastavení uloženo ✓' : (d.error || 'Chyba'), d.ok);
 }
+
+let _renameKey = null;
+
+function openRename(ip, currentName) {
+  _renameKey = ip;
+  document.getElementById('rename-ip-label').textContent = ip;
+  document.getElementById('rename-input').value = currentName;
+  const ov = document.getElementById('rename-overlay');
+  ov.style.display = 'flex';
+  setTimeout(() => document.getElementById('rename-input').focus(), 50);
+}
+
+function closeRename() {
+  document.getElementById('rename-overlay').style.display = 'none';
+  _renameKey = null;
+}
+
+async function saveRename() {
+  const name = document.getElementById('rename-input').value.trim();
+  await fetch('/api/aliases', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ key: _renameKey, name })
+  });
+  closeRename();
+  toast(name ? `Alias uložen: ${name}` : 'Alias smazán');
+  loadStatus();
+}
+
+document.getElementById('rename-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeRename();
+});
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRename(); });
 
 loadStatus();
 setInterval(loadStatus, 5000);

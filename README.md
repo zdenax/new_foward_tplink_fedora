@@ -185,11 +185,14 @@ sudo systemctl start net-forwarding
 
 Lokální webové rozhraní pro správu forwardingu a AP.
 
+![Router Manager Web UI](docs/webui-screenshot.png)
+
 ### Funkce
 - Start / Stop forwardingu jedním kliknutím
 - Statistiky přenosu dat (WAN/LAN rx/tx)
-- Seznam připojených klientů z DHCP leases
-- Konfigurace SSID a hesla AP *(závisí na modelu — viz níže)*
+- Seznam připojených klientů (z ARP tabulky + hostnames z AP)
+- Přejmenování zařízení — alias uložený podle IP (funguje i při MAC randomizaci)
+- Konfigurace SSID a hesla AP přes TP-Link CGI API
 - Automatická obnova každých 5 sekund
 
 ### Instalace

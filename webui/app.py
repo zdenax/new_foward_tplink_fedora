@@ -17,6 +17,8 @@ AP_ADMIN_PASS = "admin"  # změň dle AP
 WAN_IF = "wlp2s0"
 LAN_IF = "enp4s0"
 
+ALIASES_FILE = Path(__file__).parent / "aliases.json"
+
 try:
     from config.local import AP_IP, AP_ADMIN_USER, AP_ADMIN_PASS  # type: ignore
 except ImportError:
@@ -74,16 +76,47 @@ def get_iface_state(iface):
     return state or "unknown"
 
 
+def load_aliases():
+    try:
+        return json.loads(ALIASES_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def save_aliases(aliases):
+    ALIASES_FILE.write_text(json.dumps(aliases, ensure_ascii=False, indent=2))
+
+
+def ap_get_hosts():
+    """Vrátí {ip: hostname} z AP LAN_HOST_ENTRY."""
+    try:
+        resp = ap_cgi(5, "LAN_HOST_ENTRY", "0,0,0,0,0,0", ["IPAddress", "MACAddress", "HostName"])
+        hosts = {}
+        for block in resp.split("["):
+            ip_m = re.search(r"IPAddress=(\S+)", block)
+            h_m  = re.search(r"hostName=(.+)", block)
+            if ip_m and h_m:
+                hn = h_m.group(1).strip()
+                if hn and hn.lower() not in ("unknown", ""):
+                    hosts[ip_m.group(1)] = hn
+        return hosts
+    except Exception:
+        return {}
+
+
 def get_clients():
-    """Klienti z ARP tabulky na LAN interface."""
+    aliases = load_aliases()
+    ap_hosts = ap_get_hosts()
     clients = []
     out = run(f"ip neigh show dev {LAN_IF}")
     for line in out.splitlines():
         parts = line.split()
         if len(parts) >= 3 and parts[1] == "lladdr" and "FAILED" not in line:
             ip, mac = parts[0], parts[2]
-            if ip != AP_IP:  # vynech AP samotný
-                clients.append({"ip": ip, "mac": mac, "name": "—"})
+            if ip == AP_IP:
+                continue
+            name = aliases.get(ip) or aliases.get(mac) or ap_hosts.get(ip) or "—"
+            clients.append({"ip": ip, "mac": mac, "name": name})
     return clients
 
 
@@ -204,6 +237,27 @@ def api_ap_wifi():
             pass  # AP restartuje WiFi po změně hesla → timeout = OK
         except Exception as e:
             return jsonify({"ok": False, "error": f"Heslo SET selhal: {e}"})
+    return jsonify({"ok": True})
+
+
+@app.route("/api/aliases", methods=["GET"])
+def api_aliases_get():
+    return jsonify(load_aliases())
+
+
+@app.route("/api/aliases", methods=["POST"])
+def api_aliases_set():
+    data = request.get_json()
+    key = data.get("key", "").strip()   # IP or MAC
+    name = data.get("name", "").strip()
+    if not key:
+        return jsonify({"ok": False, "error": "key required"})
+    aliases = load_aliases()
+    if name:
+        aliases[key] = name
+    else:
+        aliases.pop(key, None)
+    save_aliases(aliases)
     return jsonify({"ok": True})
 
 
