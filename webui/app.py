@@ -105,13 +105,20 @@ def ap_cgi(action_type, oid, stack, attrs):
 
 
 def ap_get_wlan():
-    """Vrátí SSID a stack prvního WLAN."""
-    resp = ap_cgi(5, "LAN_WLAN", "0,0,0,0,0,0", ["name", "SSID", "Enable"])
-    stack_m = re.search(r"\[(\d+,\d+,\d+,\d+,\d+,\d+)\]", resp)
-    ssid_m = re.search(r"SSID=(.+)", resp)
-    stack = stack_m.group(1) if stack_m else "1,1,0,0,0,0"
-    ssid = ssid_m.group(1).strip() if ssid_m else "—"
+    stack, ssid, _ = ap_get_wlan_full()
     return stack, ssid
+
+
+def ap_get_wlan_full():
+    """Vrátí SSID, heslo a stack."""
+    resp = ap_cgi(5, "LAN_WLAN", "0,0,0,0,0,0", ["name", "SSID", "Enable", "X_TP_PreSharedKey"])
+    stack_m = re.search(r"\[(\d+,\d+,\d+,\d+,\d+,\d+)\]", resp)
+    ssid_m  = re.search(r"SSID=(.+)", resp)
+    psk_m   = re.search(r"X_TP_PreSharedKey=(.+)", resp)
+    stack = stack_m.group(1) if stack_m else "1,1,0,0,0,0"
+    ssid  = ssid_m.group(1).strip() if ssid_m else "—"
+    psk   = psk_m.group(1).strip()  if psk_m  else "—"
+    return stack, ssid, psk
 
 
 def get_ap_config():
@@ -121,10 +128,10 @@ def get_ap_config():
             html = r.read().decode(errors="ignore")
         m = re.search(r'modelName="([^"]+)"', html)
         model = m.group(1) if m else "TP-Link AP"
-        _, ssid = ap_get_wlan()
-        return {"model": model, "ssid": ssid, "reachable": True}
+        _, ssid, psk = ap_get_wlan_full()
+        return {"model": model, "ssid": ssid, "password": psk, "reachable": True}
     except Exception:
-        return {"model": "—", "ssid": "—", "reachable": False}
+        return {"model": "—", "ssid": "—", "password": "—", "reachable": False}
 
 
 @app.route("/")

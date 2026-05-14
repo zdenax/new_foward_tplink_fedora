@@ -105,6 +105,8 @@
         <div class="row"><span class="label">AP IP</span><span class="value" id="ap-ip">192.168.100.2</span></div>
         <div class="row"><span class="label">AP stav</span><span id="ap-state" class="value">…</span></div>
         <div class="row"><span class="label">Model</span><span id="ap-model2" class="value">…</span></div>
+        <div class="row"><span class="label">Aktuální SSID</span><span id="ap-ssid-cur" class="value">…</span></div>
+        <div class="row"><span class="label">Aktuální heslo</span><span id="ap-pass-cur" class="value" style="font-family:monospace">…</span></div>
       </div>
     </div>
   </div>
@@ -153,6 +155,9 @@ async function loadStatus() {
   const ap = d.ap;
   document.getElementById('ap-model').textContent = 'AP: ' + ap.model;
   document.getElementById('ap-model2').textContent = ap.model;
+  document.getElementById('ap-ssid-cur').textContent = ap.ssid || '—';
+  document.getElementById('ap-pass-cur').textContent = ap.password || '—';
+  if (!document.getElementById('ap-ssid').value) document.getElementById('ap-ssid').value = ap.ssid || '';
   document.getElementById('ap-state').innerHTML = ap.reachable
     ? '<span class="dot dot-up"></span>Dosažitelný'
     : '<span class="dot dot-down"></span>Nedosažitelný';
