@@ -32,6 +32,12 @@ fi
 echo "3. Zastavení dnsmasq..."
 systemctl stop dnsmasq || true
 
+echo "3b. Čištění DOCKER-USER pravidel..."
+if iptables -L DOCKER-USER &>/dev/null 2>&1; then
+    iptables -D DOCKER-USER -i "$LAN_IF" -o "$WAN_IF" -j ACCEPT 2>/dev/null || true
+    iptables -D DOCKER-USER -i "$WAN_IF" -o "$LAN_IF" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+fi
+
 echo "4. Vrácení $LAN_IF na DHCP..."
 nmcli con delete ap-lan 2>/dev/null || true
 

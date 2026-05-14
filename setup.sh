@@ -51,9 +51,6 @@ if systemctl is-active --quiet firewalld; then
     firewall-cmd --zone=trusted  --change-interface="$LAN_IF" --permanent
     # Masquerade na WAN
     firewall-cmd --zone=external --add-masquerade --permanent
-    # Povol forwarding mezi zónami
-    firewall-cmd --direct --add-rule ipv4 filter FORWARD 0 -i "$LAN_IF" -o "$WAN_IF" -j ACCEPT
-    firewall-cmd --direct --add-rule ipv4 filter FORWARD 0 -i "$WAN_IF" -o "$LAN_IF" -m state --state RELATED,ESTABLISHED -j ACCEPT
     firewall-cmd --reload
     echo "   ✓ firewalld nakonfigurován"
 else
@@ -87,6 +84,20 @@ fi
 
 systemctl enable dnsmasq
 systemctl restart dnsmasq && echo "   ✓ dnsmasq spuštěn" || echo "   ✗ dnsmasq selhal"
+
+# 4b. Docker override — Docker má FORWARD policy DROP, běží před firewalld
+# DOCKER-USER je správné místo pro vlastní pravidla
+echo ""
+echo "4b. Docker FORWARD override..."
+if iptables -L DOCKER-USER &>/dev/null 2>&1; then
+    iptables -D DOCKER-USER -i "$LAN_IF" -o "$WAN_IF" -j ACCEPT 2>/dev/null || true
+    iptables -D DOCKER-USER -i "$WAN_IF" -o "$LAN_IF" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+    iptables -I DOCKER-USER -i "$LAN_IF" -o "$WAN_IF" -j ACCEPT
+    iptables -I DOCKER-USER -i "$WAN_IF" -o "$LAN_IF" -m state --state RELATED,ESTABLISHED -j ACCEPT
+    echo "   ✓ DOCKER-USER pravidla přidána"
+else
+    echo "   Docker neběží, přeskakuji"
+fi
 
 # 5. Verifikace
 echo ""
