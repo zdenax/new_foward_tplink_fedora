@@ -1,14 +1,14 @@
-# Internet Forwarding Lab
+# Internet Forwarding Lab — Fedora
 
-Nastavení internet forwardingu z Kali Linux přes TP-Link AP do testovacího PC (Mint Linux).
+Nastavení internet forwardingu z Fedora Linuxu přes TP-Link AP do testovacího PC.
 
 ## Fyzická Topologie
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ Kali Linux (Notebook)                               │
-│  ├─ wlan0: internet (WAN)                          │
-│  └─ eth0: 192.168.100.50/24 (připojeno na AP LAN) │
+│ Fedora Linux (Notebook)                             │
+│  ├─ wlp2s0: internet (WAN, zabudovaný WiFi)        │
+│  └─ enp4s0: 192.168.100.50/24 (připojeno na AP LAN)│
 └─────────────────────────────────────────────────────┘
               │
               │ (CAT5 kabel)
@@ -17,13 +17,13 @@ Nastavení internet forwardingu z Kali Linux přes TP-Link AP do testovacího PC
 │ TP-Link AP                                          │
 │  ├─ LAN: 192.168.100.1/24                          │
 │  ├─ DHCP: 192.168.100.10-100                       │
-│  └─ Gateway/DNS: 192.168.100.50 (Kali)             │
+│  └─ Gateway/DNS: 192.168.100.50 (Fedora)           │
 └─────────────────────────────────────────────────────┘
               │
               │ (WiFi)
               │
 ┌─────────────────────────────────────────────────────┐
-│ Tester PC (Mint Linux)                              │
+│ Tester PC                                           │
 │  └─ WiFi: 192.168.100.X (z DHCP AP)                │
 └─────────────────────────────────────────────────────┘
 ```
@@ -31,38 +31,53 @@ Nastavení internet forwardingu z Kali Linux přes TP-Link AP do testovacího PC
 ## Datový Tok
 
 ```
-Tester → WiFi → AP (192.168.100.1) → Kali eth0 → IP Forward → Kali wlan0 → Internet
+Tester → WiFi → AP (192.168.100.1) → Fedora enp4s0 → IP Forward → Fedora wlp2s0 → Internet
 ```
+
+## Konfigurace rozhraní
+
+V `setup.sh` a `stop.sh` nahoře:
+
+```bash
+WAN_IF="wlp2s0"   # internet (zabudovaný WiFi)
+LAN_IF="enp4s0"   # kabel do AP
+```
+
+Změň podle `ip link show` pokud máš jiné názvy.
 
 ## Instalace
 
-### 1. Příprava Kali
+### 1. Příprava Fedory
 
 ```bash
-# Nastavení eth0 (pokud není statický)
-sudo ip addr add 192.168.100.50/24 dev eth0
-# nebo v /etc/network/interfaces:
-# auto eth0
-# iface eth0 inet static
-#     address 192.168.100.50
-#     netmask 255.255.255.0
+# Nastav statickou IP na enp4s0 (LAN do AP)
+sudo ip addr add 192.168.100.50/24 dev enp4s0
+sudo ip link set enp4s0 up
+
+# nebo permanentně přes nmcli:
+sudo nmcli con add type ethernet ifname enp4s0 ip4 192.168.100.50/24
 ```
 
 ### 2. Spuštění Forwardingu
 
 ```bash
-cd ~/net_forwarding
+cd ~/new_foward_tplink_fedora
 sudo ./setup.sh
 ```
 
-### 3. Ověření na Kali
+Skript automaticky detekuje firewalld (Fedora default) a použije `firewall-cmd`. Pokud firewalld neběží, fallback na raw iptables.
+
+### 3. Ověření na Fedoře
 
 ```bash
 # IP forwarding zapnutý?
 cat /proc/sys/net/ipv4/ip_forward
 # Mělo by být: 1
 
-# NAT pravidla?
+# NAT pravidla (firewalld)?
+sudo firewall-cmd --zone=external --query-masquerade
+
+# nebo raw iptables:
 sudo iptables -t nat -L POSTROUTING -v
 sudo iptables -L FORWARD -v
 ```
@@ -79,8 +94,8 @@ Vstup do AP webového rozhraní (http://192.168.100.1):
   - Enable: ON
   - Start IP: 192.168.100.10
   - End IP: 192.168.100.100
-  - Gateway: **192.168.100.50** (Kali)
-  - DNS 1: **192.168.100.50** (Kali)
+  - Gateway: **192.168.100.50** (Fedora)
+  - DNS 1: **192.168.100.50** (Fedora)
   - DNS 2: 8.8.8.8 (záloha)
 
 - **WLAN → Basic:**
@@ -90,10 +105,6 @@ Vstup do AP webového rozhraní (http://192.168.100.1):
 ### 5. Test na Testeri
 
 ```bash
-# SSH na Tester (Mint)
-ssh mint@192.168.100.12
-
-# Kontrola na Testeri:
 ip route           # Mělo by mít gateway 192.168.100.1 (AP)
 ping 8.8.8.8      # Test internetu
 curl -I google.com # Test HTTP
@@ -102,48 +113,53 @@ curl -I google.com # Test HTTP
 ## Příkazy Diagnostiky
 
 ```bash
-# Na Kali:
-netstat -tlnp              # Otevřené porty
-sudo tcpdump -i eth0 -n    # Sledovat eth0 provoz
-sudo tcpdump -i wlan0 -n   # Sledovat wlan0 provoz
+# Na Fedoře:
+netstat -tlnp                   # Otevřené porty
+sudo tcpdump -i enp4s0 -n       # Sledovat LAN provoz
+sudo tcpdump -i wlp2s0 -n       # Sledovat WAN provoz
+sudo firewall-cmd --list-all --zone=external
 
 # Na Testeri:
-traceroute 8.8.8.8         # Cesta k internetu
-nslookup google.com        # DNS test
-iperf3 -c <kali-ip>        # Bandwidth test (pokud máš iperf3)
+traceroute 8.8.8.8              # Cesta k internetu
+nslookup google.com             # DNS test
+iperf3 -c 192.168.100.50        # Bandwidth test
 ```
 
 ## Zastavení Forwardingu
 
 ```bash
-sudo ~/net_forwarding/stop.sh
+sudo ./stop.sh
 ```
 
 ## Troubleshooting
 
 ### Tester nemá internet
 1. Kontrola AP gateway: měl by být 192.168.100.50
-2. Ping na AP gateway z Testera: `ping 192.168.100.1`
-3. Ping na Kali z Testera: `ping 192.168.100.50`
-4. Kontrola IP forwarding na Kali: `cat /proc/sys/net/ipv4/ip_forward`
+2. `ping 192.168.100.1` z Testera (AP)
+3. `ping 192.168.100.50` z Testera (Fedora)
+4. `cat /proc/sys/net/ipv4/ip_forward` — musí být 1
 
 ### AP nemá internet
-1. Zkontroluj, že Kali wlan0 má internet: `ping 8.8.8.8`
-2. Sleduj iptables pravidla: `sudo iptables -L FORWARD -v`
-3. Zkontroluj rp_filter: `cat /proc/sys/net/ipv4/conf/all/rp_filter` (mělo by být 0)
+1. `ping 8.8.8.8` z Fedory na wlp2s0
+2. `sudo firewall-cmd --zone=external --query-masquerade`
+3. `cat /proc/sys/net/ipv4/conf/all/rp_filter` — musí být 0
 
-### SSH nefunguje
+### dnsmasq nespustí (port 53 obsazený)
 ```bash
-# Vygeneruj SSH klíče
-ssh-keygen -t ed25519 -f ~/.ssh/id_rsa -N "" -C "kali@lab"
-
-# Zkopíruj na Tester
-ssh-copy-id -i ~/.ssh/id_rsa.pub mint@192.168.100.12
+# systemd-resolved konfliktuje — setup.sh ho zastaví automaticky
+# manuálně:
+sudo systemctl stop systemd-resolved
+sudo systemctl disable systemd-resolved
+sudo systemctl restart dnsmasq
 ```
 
-## Persistence (Systemd Service - volitelně)
+### firewalld blokuje provoz
+```bash
+sudo firewall-cmd --zone=trusted --list-all
+sudo firewall-cmd --zone=external --list-all
+```
 
-Pokud chceš forwarding po restartu:
+## Persistence (Systemd Service)
 
 ```bash
 sudo cp net-forwarding.service /etc/systemd/system/
@@ -154,10 +170,11 @@ sudo systemctl start net-forwarding
 
 ## Soubory
 
-- `setup.sh` - Hlavní skript pro nastavení
-- `stop.sh` - Zastavení forwardingu
-- `net-forwarding.service` - Systemd service (volitelně)
-- `README.md` - Tato dokumentace
+- `setup.sh` — nastavení forwardingu (firewalld + fallback iptables)
+- `stop.sh` — zastavení forwardingu
+- `dnsmasq.conf` — DNS konfigurace
+- `net-forwarding.service` — systemd service
+- `README.md` — tato dokumentace
 
 ---
 vault: [[Vault/School/ZPS]]
