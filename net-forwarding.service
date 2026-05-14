@@ -1,12 +1,13 @@
 [Unit]
-Description=Internet Forwarding Service (Kali → AP)
-After=network.target
+Description=Internet Forwarding Service (Fedora → AP)
+After=network-online.target firewalld.service
+Wants=network-online.target
 
 [Service]
 Type=oneshot
 User=root
-ExecStart=/home/agent/net_forwarding/setup.sh
-ExecStop=/home/agent/net_forwarding/stop.sh
+ExecStart=/home/zdenek/claude/new_foward_tplink/setup.sh
+ExecStop=/home/zdenek/claude/new_foward_tplink/stop.sh
 RemainAfterExit=yes
 
 [Install]
